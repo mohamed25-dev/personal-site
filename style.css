@@ -1,0 +1,96 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-size: 18px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: #1c1917;
+  background: #fafaf9;
+  line-height: 1.75;
+}
+
+.container {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* INTRO */
+.intro {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  padding: 4rem 0;
+}
+
+h1 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 800;
+  color: #0c0a09;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+
+.intro p {
+  color: #78716c;
+  font-size: 1.1rem;
+  line-height: 1.7;
+  margin-bottom: 1.25rem;
+}
+
+.links {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.links a {
+  color: #6366f1;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.links a:hover { text-decoration: underline; }
+
+/* DIVIDER */
+hr {
+  border: none;
+  border-top: 1px solid #e7e5e4;
+  margin: 0;
+}
+
+/* BLOG */
+.blog {
+  padding: 3rem 0 5rem;
+}
+
+.blog h2 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0c0a09;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin-bottom: 1.5rem;
+}
+
+.blog-item {
+  padding: 0.25rem 0;
+}
+
+.blog-item .title {
+  color: #1c1917;
+  font-size: 1rem;
+  font-weight: 500;
+  font-style: italic;
+}
+
+.blog-item .status {
+  color: #78716c;
+  font-size: 0.85rem;
+}
