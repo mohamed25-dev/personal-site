@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Does Virtual Memory Work?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>(function(){var t=localStorage.getItem('theme-preference');if(!t)t=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t)})()</script>
+<link rel="stylesheet" href="blog.css">
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="nav-inner">
+    <a href="../index.html#blog" class="back-link">&larr; Back to blog</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode">// dark</button>
+  </div>
+</nav>
+
+<!-- shared pencil SVG filter -->
+<svg width="0" height="0" style="position:absolute;">
+  <defs>
+    <filter id="pencil" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="3" seed="2" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.8" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section class="hero">
+  <div class="container">
+    <h1>How Does Virtual Memory Work?</h1>
+    <p class="lead">
+      Virtual memory took decades of real problems and clever tricks to arrive at. Instead of explaining what it is, let's trace why we needed it.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 1 — ONE PROGRAM, THE WHOLE MACHINE
+     ============================================================ -->
+<section class="" id="one-program">
+  <div class="container">
+
+    <h2>One Program, the Whole Machine</h2>
+
+
+    <p>
+      In the earliest computers, there was no operating system. No multitasking. You loaded one
+      program into memory, it ran, it finished, you loaded the next one. The program owned
+      <em>everything</em> &mdash; every byte of RAM, every address.
+    </p>
+
+    <p>
+      The memory map was dead simple. The program started at some known address, say <code>0x0000</code>,
+      and used as much RAM as it needed. Whatever was left over just sat there, unused.
+    </p>
+  </div>
+
+  <div class="wide">
+    <div class="sketch">
+      <svg viewBox="0 0 520 100" xmlns="http://www.w3.org/2000/svg">
+        <g filter="url(#pencil)">
+          <!-- memory bar -->
+          <path d="M 30,30 L 488,31 L 490,70 L 31,71 Z" fill="none" stroke="var(--pencil)" stroke-width="1.8" stroke-linejoin="round"/>
+          <!-- partition line -->
+          <line x1="220" y1="30" x2="219" y2="71" stroke="var(--pencil)" stroke-width="1.2" stroke-dasharray="5,4"/>
+          <!-- fills -->
+          <path d="M 32,32 L 218,32 L 218,69 L 32,69 Z" fill="var(--sketch-blue)" opacity="0.18"/>
+        </g>
+        <!-- labels (hand font, outside filter for crispness) -->
+        <text x="125" y="56" text-anchor="middle" font-family="Caveat, cursive" font-size="20" fill="var(--sketch-blue)" font-weight="600">Program</text>
+        <text x="355" y="56" text-anchor="middle" font-family="Caveat, cursive" font-size="20" fill="var(--pencil-light)">unused</text>
+        <!-- address labels -->
+        <text x="32" y="22" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">0x0000</text>
+        <text x="450" y="22" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">0xFFFF</text>
+        <!-- title -->
+        <text x="260" y="93" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--pencil-light)">Physical RAM &mdash; one program, full control</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="container">
+    <p>
+      Addresses in the code were <strong>physical addresses</strong>. When the program said
+      "store this value at address <code>0x4000</code>," it meant physical address <code>0x4000</code> in
+      the actual RAM chip. No translation. No indirection. The program saw reality as it was.
+    </p>
+
+    <p>
+      This worked fine. One program, one machine, no conflicts.
+    </p>
+
+    <p>
+      But machines were expensive. Really expensive. And most of the time, the program
+      was waiting &mdash; waiting for a punch card to be read, waiting for a tape to spin
+      to the right position, waiting for output to print. The CPU sat idle. That expensive
+      CPU, doing nothing.
+    </p>
+
+    <p>
+      The question became obvious: <strong>what if we ran more than one program at a time?</strong>
+    </p>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 2 — TWO PROGRAMS, ONE PROBLEM
+     ============================================================ -->
+<section class="" id="two-programs">
+  <div class="container">
+
+    <h2>Two Programs, One Problem</h2>
+
+
+    <p>
+      Let's say we have 64 KB of RAM and we want to run two programs. The simplest idea:
+      just load both into memory at the same time. Program A starts at <code>0x0000</code>,
+      program B starts at <code>0x8000</code>.
+    </p>
+  </div>
+
+  <div class="wide">
+    <div class="sketch">
+      <svg viewBox="0 0 520 110" xmlns="http://www.w3.org/2000/svg">
+        <g filter="url(#pencil)">
+          <path d="M 30,30 L 489,31 L 490,70 L 31,71 Z" fill="none" stroke="var(--pencil)" stroke-width="1.8" stroke-linejoin="round"/>
+          <!-- partition lines -->
+          <line x1="180" y1="30" x2="179" y2="71" stroke="var(--pencil)" stroke-width="1.2" stroke-dasharray="5,4"/>
+          <line x1="230" y1="30" x2="230" y2="71" stroke="var(--pencil)" stroke-width="1.2" stroke-dasharray="5,4"/>
+          <line x1="370" y1="30" x2="369" y2="71" stroke="var(--pencil)" stroke-width="1.2" stroke-dasharray="5,4"/>
+          <!-- fills -->
+          <path d="M 32,32 L 178,32 L 178,69 L 32,69 Z" fill="var(--sketch-blue)" opacity="0.18"/>
+          <path d="M 232,32 L 368,32 L 368,69 L 232,69 Z" fill="var(--sketch-pink)" opacity="0.18"/>
+        </g>
+        <text x="105" y="56" text-anchor="middle" font-family="Caveat, cursive" font-size="19" fill="var(--sketch-blue)" font-weight="600">Program A</text>
+        <text x="205" y="56" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--pencil-faint)"></text>
+        <text x="300" y="56" text-anchor="middle" font-family="Caveat, cursive" font-size="19" fill="var(--sketch-pink)" font-weight="600">Program B</text>
+        <text x="435" y="56" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--pencil-light)">free</text>
+
+        <text x="32" y="22" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">0x0000</text>
+        <text x="230" y="22" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">0x8000</text>
+
+        <!-- danger scribble -->
+        <text x="260" y="100" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-red)">A can read &amp; write B's memory! No protection.</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="container">
+    <p>Sounds straightforward. But this creates three serious problems.</p>
+
+    <h3>Problem 1: Addresses Are Baked In</h3>
+    <p>
+      When program B was compiled, the compiler didn't know it would be loaded at
+      <code>0x8000</code>. It assumed it starts at <code>0x0000</code>, like every other
+      program. So all its internal addresses &mdash; jump targets, data references, function
+      pointers &mdash; are wrong.
+    </p>
+    <p>
+      You could fix this by <strong>relocating</strong> the program at load time: scanning
+      every address in the binary and adding an offset. Early systems actually did this. It
+      worked, but it was slow and fragile.
+    </p>
+
+    <h3>Problem 2: No Protection</h3>
+    <p>
+      Program A can read and write <em>any</em> physical address. Including the memory
+      that belongs to program B. A bug in A &mdash; a wild pointer, an out-of-bounds array
+      access &mdash; can silently corrupt B's data. Or worse, corrupt the OS itself.
+    </p>
+
+    <div class="callout bad">
+      <p>
+        This isn't hypothetical. In early multiprogramming systems, a buggy program could
+        bring down <em>every</em> other program on the machine. There was no isolation.
+        Programs had to be trusted, and that only works when there are very few of them.
+      </p>
+    </div>
+
+    <h3>Problem 3: Memory Is Wasted</h3>
+    <p>
+      If program A needs 20 KB and we give it a 32 KB partition, 12 KB is wasted.
+      If program B needs 40 KB and the remaining partition is only 32 KB, it can't run at
+      all &mdash; even though there's 12 KB of unused memory sitting in A's partition.
+    </p>
+
+    <p>
+      We need a system that solves all three: <strong>let programs use any address they
+      want</strong>, <strong>protect them from each other</strong>, and
+      <strong>use memory efficiently</strong>. The search for that system is what led to
+      virtual memory.
+    </p>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 3 — FIXED PARTITIONS
+     ============================================================ -->
+<section class="" id="fixed-partitions">
+  <div class="container">
+
+    <h2>Fixed Partitions</h2>
+
+
+    <p>
+      The first real attempt at sharing memory was straightforward: <strong>divide physical
+      memory into fixed-size partitions</strong> at boot time. Each partition gets one
+      program. The OS takes one partition for itself.
+    </p>
+  </div>
+
+  <div class="wide">
+    <div class="sketch">
+      <svg viewBox="0 0 520 170" xmlns="http://www.w3.org/2000/svg">
+        <g filter="url(#pencil)">
+          <!-- main memory bar -->
+          <path d="M 30,35 L 489,36 L 490,75 L 31,76 Z" fill="none" stroke="var(--pencil)" stroke-width="1.8" stroke-linejoin="round"/>
+          <!-- partition lines -->
+          <line x1="145" y1="35" x2="145" y2="76" stroke="var(--pencil)" stroke-width="1.5"/>
+          <line x1="260" y1="35" x2="260" y2="76" stroke="var(--pencil)" stroke-width="1.5"/>
+          <line x1="375" y1="35" x2="374" y2="76" stroke="var(--pencil)" stroke-width="1.5"/>
+          <!-- fills -->
+          <path d="M 32,37 L 143,37 L 143,74 L 32,74 Z" fill="var(--pencil)" opacity="0.12"/>
+          <path d="M 147,37 L 258,37 L 258,74 L 147,74 Z" fill="var(--sketch-blue)" opacity="0.15"/>
+          <path d="M 262,37 L 373,37 L 373,74 L 262,74 Z" fill="var(--sketch-pink)" opacity="0.15"/>
+          <path d="M 377,37 L 488,37 L 488,74 L 377,74 Z" fill="var(--sketch-green)" opacity="0.15"/>
+        </g>
+
+        <text x="88" y="61" text-anchor="middle" font-family="Caveat, cursive" font-size="18" fill="var(--pencil)" font-weight="600">OS</text>
+        <text x="203" y="61" text-anchor="middle" font-family="Caveat, cursive" font-size="18" fill="var(--sketch-blue)" font-weight="600">A (10K)</text>
+        <text x="318" y="61" text-anchor="middle" font-family="Caveat, cursive" font-size="18" fill="var(--sketch-pink)" font-weight="600">B (14K)</text>
+        <text x="433" y="61" text-anchor="middle" font-family="Caveat, cursive" font-size="18" fill="var(--sketch-green)" font-weight="600">C (6K)</text>
+
+        <text x="30" y="27" font-family="Caveat, cursive" font-size="13" fill="var(--pencil-light)">16K each</text>
+
+        <!-- wasted space annotations -->
+        <g filter="url(#pencil)">
+          <!-- hatched "wasted" areas under each partition -->
+          <line x1="203" y1="88" x2="203" y2="108" stroke="var(--sketch-red)" stroke-width="1.2"/>
+          <line x1="318" y1="88" x2="318" y2="108" stroke="var(--sketch-red)" stroke-width="1.2"/>
+          <line x1="433" y1="88" x2="433" y2="108" stroke="var(--sketch-red)" stroke-width="1.2"/>
+        </g>
+        <text x="203" y="125" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-red)">6K wasted</text>
+        <text x="318" y="125" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-red)">2K wasted</text>
+        <text x="433" y="125" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-red)">10K wasted!</text>
+
+        <text x="260" y="158" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--pencil-light)">internal fragmentation &mdash; programs rarely fill their partition</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="container">
+    <p>
+      What about the address problem? Each partition has a known starting address, so the
+      hardware can add a simple <strong>base register</strong> that offsets every address by
+      the partition's start. The OS loads the right base on each context switch. Programs
+      compile assuming they start at zero &mdash; the hardware fixes it transparently.
+    </p>
+
+    <p>
+      For protection, the hardware adds a bounds check: before every memory access, it verifies that
+      the address falls within the current program's assigned partition. If not, the hardware
+      traps to the OS, and the offending program is killed. We finally have <strong>isolation</strong>.
+    </p>
+
+    <p>But this scheme has obvious weaknesses.</p>
+
+    <div class="tradeoff">
+      <div class="tradeoff-col pros">
+        <h4>Pros</h4>
+        <ul>
+          <li>Simple to implement</li>
+          <li>Hardware protection between programs</li>
+          <li>Fast &mdash; almost no overhead</li>
+        </ul>
+      </div>
+      <div class="tradeoff-col cons">
+        <h4>Cons</h4>
+        <ul>
+          <li><strong>Internal fragmentation</strong> &mdash; programs rarely fill their partition exactly</li>
+          <li>Fixed number of programs &mdash; partition count is decided at boot</li>
+          <li>A program can't be bigger than a single partition</li>
+          <li>Partition sizes must accommodate the largest expected program</li>
+        </ul>
+      </div>
+    </div>
+
+    <p>
+      The fundamental issue: <strong>fixed partitions force you to guess the future</strong>.
+      How big should partitions be? How many? Get it wrong and you waste memory or can't run
+      certain programs. We need something more flexible.
+    </p>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 4 — BASE AND BOUND
+     ============================================================ -->
+<section class="" id="base-and-bound">
+  <div class="container">
+
+    <h2>Base and Bound</h2>
+
+
+    <p>
+      Here's a better idea. Instead of fixed partitions, give each program a <strong>variable-size</strong>
+      region of memory. The hardware tracks two values for the running program:
+    </p>
+    <ul style="margin-bottom: 1.5rem; padding-left: 1.25rem;">
+      <li>The <strong>base register</strong> &mdash; where this program's memory starts in physical RAM</li>
+      <li>The <strong>bound register</strong> (or limit) &mdash; how much memory it's allowed to use</li>
+    </ul>
+
+    <p>Every memory access gets translated by the hardware:</p>
+
+<pre><span class="cmt">// Hardware does this on every memory access:</span>
+<span class="kw">if</span> (address >= bound)
+    <span class="fn">trap</span>(<span class="str">"segmentation fault"</span>);   <span class="cmt">// kill the process</span>
+physical_address = base + address;</pre>
+
+    <p>
+      The program thinks it starts at address <code>0x0000</code>. It uses addresses
+      <code>0x0000</code> through whatever it needs. The hardware transparently adds the
+      base to every address, mapping it to the right spot in physical RAM. The program
+      never sees physical addresses. It can't access memory outside its region because the
+      bound check catches it.
+    </p>
+  </div>
+
+  <div class="wide">
+    <div class="sketch">
+      <svg viewBox="0 0 520 240" xmlns="http://www.w3.org/2000/svg">
+        <!-- Program's view -->
+        <text x="110" y="20" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--pencil)" font-weight="600">Program's view</text>
+        <g filter="url(#pencil)">
+          <path d="M 25,30 L 195,31 L 196,65 L 26,66 Z" fill="var(--sketch-blue)" fill-opacity="0.15" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round"/>
+        </g>
+        <text x="110" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--sketch-blue)" font-weight="600">0x0000 &ndash; 0x4FFF</text>
+        <text x="110" y="84" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">"I own addresses 0 to 20K"</text>
+
+        <!-- Arrow -->
+        <g filter="url(#pencil)">
+          <line x1="205" y1="48" x2="280" y2="48" stroke="var(--pencil)" stroke-width="1.5" marker-end="url(#hand-arrow)"/>
+        </g>
+        <text x="242" y="40" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--accent)" font-weight="600">+ base</text>
+
+        <!-- Physical memory -->
+        <text x="395" y="20" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--pencil)" font-weight="600">Physical reality</text>
+        <g filter="url(#pencil)">
+          <path d="M 290,30 L 499,31 L 500,65 L 291,66 Z" fill="none" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round"/>
+          <line x1="340" y1="30" x2="340" y2="66" stroke="var(--pencil)" stroke-width="1" stroke-dasharray="4,3"/>
+          <line x1="440" y1="30" x2="440" y2="66" stroke="var(--pencil)" stroke-width="1" stroke-dasharray="4,3"/>
+          <path d="M 292,32 L 338,32 L 338,64 L 292,64 Z" fill="var(--pencil)" opacity="0.08"/>
+          <path d="M 342,32 L 438,32 L 438,64 L 342,64 Z" fill="var(--sketch-blue)" opacity="0.15"/>
+        </g>
+        <text x="316" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">OS</text>
+        <text x="390" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-blue)" font-weight="600">Program A</text>
+        <text x="470" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">free</text>
+
+        <!-- Registers -->
+        <g filter="url(#pencil)">
+          <path d="M 120,115 L 290,116 L 291,150 L 121,151 Z" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="6,3"/>
+          <path d="M 300,115 L 470,116 L 471,150 L 301,151 Z" fill="none" stroke="var(--sketch-red)" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="6,3"/>
+        </g>
+        <text x="205" y="128" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">base register</text>
+        <text x="205" y="147" text-anchor="middle" font-family="Caveat, cursive" font-size="18" fill="var(--accent)" font-weight="700">0x4000</text>
+        <text x="385" y="128" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">bound register</text>
+        <text x="385" y="147" text-anchor="middle" font-family="Caveat, cursive" font-size="18" fill="var(--sketch-red)" font-weight="700">0x5000</text>
+
+        <!-- Example translation -->
+        <text x="260" y="185" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--pencil)">
+          Program reads <tspan fill="var(--sketch-blue)" font-weight="700">0x1000</tspan>
+        </text>
+        <g filter="url(#pencil)">
+          <line x1="260" y1="192" x2="260" y2="208" stroke="var(--pencil-faint)" stroke-width="1"/>
+        </g>
+        <text x="260" y="225" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--pencil)">
+          Hardware accesses <tspan fill="var(--sketch-green)" font-weight="700">0x5000</tspan>
+          <tspan fill="var(--pencil-light)" font-size="15"> (0x4000 + 0x1000)</tspan>
+        </text>
+
+        <defs>
+          <marker id="hand-arrow" viewBox="0 0 12 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+            <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+    <div class="sketch-caption">The base register relocates every address; the bound register enforces the limit</div>
+  </div>
+
+  <div class="container">
+    <p>
+      This is a real improvement. Programs are compiled assuming they start at address zero.
+      No relocation needed at load time &mdash; the hardware does it on every access.
+      Programs are isolated. And partitions can be any size.
+    </p>
+
+    <p>
+      When the OS switches from running program A to program B, it saves A's base and
+      bound registers and loads B's. Each program gets its own view of memory.
+      This is called <strong>dynamic relocation</strong>.
+    </p>
+
+    <div class="tradeoff">
+      <div class="tradeoff-col pros">
+        <h4>Pros</h4>
+        <ul>
+          <li>Programs don't need to know their physical address</li>
+          <li>Variable-size regions &mdash; no guessing</li>
+          <li>Hardware-enforced protection</li>
+          <li>The OS can relocate a program by just changing its base register</li>
+        </ul>
+      </div>
+      <div class="tradeoff-col cons">
+        <h4>Cons</h4>
+        <ul>
+          <li><strong>External fragmentation</strong> &mdash; as programs come and go, physical memory becomes a patchwork of holes</li>
+          <li>Each program must be <strong>contiguous</strong> in physical memory</li>
+          <li>No easy way for two programs to <strong>share</strong> the same code (e.g., a shared library)</li>
+          <li>Growing a program is painful &mdash; what if there's another program right after it?</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>The Fragmentation Problem</h3>
+    <p>
+      As programs start and exit, memory becomes full of small gaps. Suppose four programs
+      are running, and B and D exit:
+    </p>
+  </div>
+
+  <div class="wide">
+    <div class="sketch">
+      <svg viewBox="0 0 520 110" xmlns="http://www.w3.org/2000/svg">
+        <g filter="url(#pencil)">
+          <path d="M 30,30 L 489,31 L 490,70 L 31,71 Z" fill="none" stroke="var(--pencil)" stroke-width="1.8" stroke-linejoin="round"/>
+          <!-- partition lines -->
+          <line x1="90" y1="30" x2="90" y2="71" stroke="var(--pencil)" stroke-width="1"/>
+          <line x1="200" y1="30" x2="200" y2="71" stroke="var(--pencil)" stroke-width="1"/>
+          <line x1="280" y1="30" x2="280" y2="71" stroke="var(--pencil)" stroke-width="1"/>
+          <line x1="370" y1="30" x2="370" y2="71" stroke="var(--pencil)" stroke-width="1"/>
+          <!-- fills -->
+          <path d="M 32,32 L 88,32 L 88,69 L 32,69 Z" fill="var(--pencil)" opacity="0.1"/>
+          <path d="M 92,32 L 198,32 L 198,69 L 92,69 Z" fill="var(--sketch-blue)" opacity="0.15"/>
+          <path d="M 282,32 L 368,32 L 368,69 L 282,69 Z" fill="var(--sketch-purple)" opacity="0.15"/>
+        </g>
+        <text x="60" y="55" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">OS</text>
+        <text x="145" y="55" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--sketch-blue)" font-weight="600">A</text>
+        <text x="240" y="55" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--pencil-light)">free</text>
+        <text x="325" y="55" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--sketch-purple)" font-weight="600">C</text>
+        <text x="435" y="55" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--pencil-light)">free</text>
+
+        <!-- annotation -->
+        <text x="260" y="100" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-red)">5K total free &mdash; but a 4K program can't fit in either hole!</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="container">
+    <p>
+      There's enough total free memory, but it's split into small gaps. A new program
+      that needs a contiguous block might not fit anywhere. This is <strong>external
+      fragmentation</strong> &mdash; free memory exists but can't be used.
+    </p>
+
+    <p>
+      You <em>could</em> compact memory: stop everything, slide programs together to
+      consolidate free space, update all the base registers. But compaction is expensive.
+      Every byte of every running program might need to be copied. The system freezes
+      while this happens. Not great.
+    </p>
+
+    <p>
+      We need a scheme where a program's memory doesn't have to be contiguous in physical RAM.
+    </p>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 5 — SEGMENTATION
+     ============================================================ -->
+<section class="" id="segmentation">
+  <div class="container">
+
+    <h2>Segmentation</h2>
+
+
+    <p>
+      Base and bound gave each program <em>one</em> contiguous region. Segmentation extends
+      this idea: give each program <em>multiple</em> base-and-bound pairs, one for each
+      logical <strong>segment</strong> of its address space.
+    </p>
+
+    <p>A typical program has at least three logical regions:</p>
+    <ul style="margin-bottom: 1.5rem; padding-left: 1.25rem;">
+      <li>The <strong>code segment</strong> &mdash; the program's instructions (read-only)</li>
+      <li>The <strong>data segment</strong> &mdash; global variables, the heap (read-write)</li>
+      <li>The <strong>stack segment</strong> &mdash; local variables, function call frames (grows/shrinks)</li>
+    </ul>
+
+    <p>
+      Each segment gets its own base, bound, and <strong>permissions</strong> (read, write,
+      execute). The virtual address now has two parts: the <strong>segment number</strong>
+      (which segment?) and the <strong>offset</strong> (where in that segment?).
+    </p>
+
+<pre><span class="cmt">// Hardware translation with segmentation:</span>
+segment = address >> <span class="num">14</span>;          <span class="cmt">// top 2 bits = segment number</span>
+offset  = address & <span class="num">0x3FFF</span>;       <span class="cmt">// bottom 14 bits = offset</span>
+
+<span class="kw">if</span> (offset >= segments[segment].bound)
+    <span class="fn">trap</span>(<span class="str">"segmentation fault"</span>);
+
+<span class="kw">if</span> (!<span class="fn">check_permissions</span>(segments[segment], access_type))
+    <span class="fn">trap</span>(<span class="str">"protection fault"</span>);
+
+physical = segments[segment].base + offset;</pre>
+  </div>
+
+  <div class="wide">
+    <div class="sketch">
+      <svg viewBox="0 0 520 260" xmlns="http://www.w3.org/2000/svg">
+        <!-- Virtual side -->
+        <text x="80" y="18" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--pencil)" font-weight="600">Program A sees:</text>
+
+        <g filter="url(#pencil)">
+          <path d="M 18,28 L 152,29 L 153,60 L 19,61 Z" fill="var(--sketch-blue)" fill-opacity="0.13" stroke="var(--pencil)" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M 18,68 L 152,69 L 153,100 L 19,101 Z" fill="var(--sketch-green)" fill-opacity="0.13" stroke="var(--pencil)" stroke-width="1.4" stroke-linejoin="round"/>
+          <path d="M 18,108 L 152,109 L 153,140 L 19,141 Z" fill="var(--sketch-red)" fill-opacity="0.13" stroke="var(--pencil)" stroke-width="1.4" stroke-linejoin="round"/>
+        </g>
+        <text x="85" y="50" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-blue)" font-weight="600">Code</text>
+        <text x="85" y="90" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-green)" font-weight="600">Data</text>
+        <text x="85" y="130" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-red)" font-weight="600">Stack</text>
+
+        <!-- Arrows -->
+        <g filter="url(#pencil)">
+          <path d="M 158,44 C 195,44 200,55 240,60" fill="none" stroke="var(--pencil)" stroke-width="1.2" marker-end="url(#hand-arrow2)"/>
+          <path d="M 158,84 C 195,84 215,150 240,158" fill="none" stroke="var(--pencil)" stroke-width="1.2" marker-end="url(#hand-arrow2)"/>
+          <path d="M 158,124 C 200,124 210,225 240,230" fill="none" stroke="var(--pencil)" stroke-width="1.2" marker-end="url(#hand-arrow2)"/>
+        </g>
+
+        <!-- Physical side -->
+        <text x="380" y="18" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--pencil)" font-weight="600">Physical memory:</text>
+
+        <g filter="url(#pencil)">
+          <!-- big box -->
+          <path d="M 245,28 L 500,29 L 501,248 L 246,249 Z" fill="none" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round"/>
+          <!-- rows -->
+          <line x1="245" y1="68" x2="501" y2="68" stroke="var(--pencil-faint)" stroke-width="0.8"/>
+          <line x1="245" y1="98" x2="501" y2="98" stroke="var(--pencil-faint)" stroke-width="0.8"/>
+          <line x1="245" y1="128" x2="501" y2="128" stroke="var(--pencil-faint)" stroke-width="0.8"/>
+          <line x1="245" y1="178" x2="501" y2="178" stroke="var(--pencil-faint)" stroke-width="0.8"/>
+          <line x1="245" y1="218" x2="501" y2="218" stroke="var(--pencil-faint)" stroke-width="0.8"/>
+          <!-- fills -->
+          <path d="M 247,30 L 499,30 L 499,66 L 247,66 Z" fill="var(--pencil)" opacity="0.06"/>
+          <path d="M 247,70 L 370,70 L 370,96 L 247,96 Z" fill="var(--sketch-blue)" opacity="0.13"/>
+          <path d="M 372,70 L 499,70 L 499,96 L 372,96 Z" fill="var(--sketch-pink)" opacity="0.1"/>
+          <path d="M 247,130 L 410,130 L 410,176 L 247,176 Z" fill="var(--sketch-green)" opacity="0.13"/>
+          <path d="M 247,220 L 380,220 L 380,247 L 247,247 Z" fill="var(--sketch-red)" opacity="0.13"/>
+        </g>
+        <text x="373" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">OS</text>
+        <text x="308" y="88" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--sketch-blue)">A: Code</text>
+        <text x="436" y="88" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--sketch-pink)">B: Code</text>
+        <text x="373" y="118" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">free</text>
+        <text x="328" y="158" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--sketch-green)">A: Data</text>
+        <text x="455" y="155" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">free</text>
+        <text x="373" y="203" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">free</text>
+        <text x="313" y="238" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--sketch-red)">A: Stack</text>
+        <text x="445" y="238" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-light)">free</text>
+
+        <defs>
+          <marker id="hand-arrow2" viewBox="0 0 12 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </marker>
+        </defs>
+      </svg>
+      <div class="sketch-caption">Segments can live in different parts of physical memory &mdash; they don't need to be adjacent</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <p>
+      This is a big step forward. A program's code, data, and stack can now live in
+      <em>different</em> places in physical memory. They don't need to be next to each
+      other. The hardware connects them through the segment table so the program
+      sees a clean, continuous address space.
+    </p>
+
+    <p>
+      Even better, segments enable <strong>sharing</strong>. Two programs running the same
+      executable can share a single physical copy of the code segment. Each has its own data
+      and stack segments, but the read-only code is shared. Less memory used, more programs
+      running.
+    </p>
+
+    <div class="tradeoff">
+      <div class="tradeoff-col pros">
+        <h4>Pros</h4>
+        <ul>
+          <li>Segments match how programs actually work (code, data, stack)</li>
+          <li>Enables code sharing between processes</li>
+          <li>Per-segment permissions (code is read+execute, data is read+write)</li>
+          <li>Sparse address spaces &mdash; no need to allocate memory between segments</li>
+        </ul>
+      </div>
+      <div class="tradeoff-col cons">
+        <h4>Cons</h4>
+        <ul>
+          <li><strong>External fragmentation is still a problem</strong> &mdash; segments are variable-sized, so free memory still breaks into scattered gaps</li>
+          <li>Growing a segment (e.g., the heap) may require moving it</li>
+          <li>The OS has to manage variable-sized free regions, which is complex</li>
+        </ul>
+      </div>
+    </div>
+
+    <p>
+      Segmentation made things better, but it didn't eliminate the core problem. Variable-size
+      chunks of memory always lead to fragmentation. Free space breaks into oddly-shaped holes.
+      Managing those holes is a headache.
+    </p>
+
+    <p>What if we made <em>every chunk the same size?</em></p>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 6 — PAGING
+     ============================================================ -->
+<section class="" id="paging">
+  <div class="container">
+
+    <h2>Paging &mdash; The Breakthrough</h2>
+
+
+    <p>
+      Paging is the approach that every modern OS uses today. It takes a completely different
+      approach to memory management.
+    </p>
+
+    <p>
+      Instead of dividing memory into variable-sized segments, we chop <em>everything</em> into
+      small, equal-sized pieces:
+    </p>
+    <ul style="margin-bottom: 1.5rem; padding-left: 1.25rem;">
+      <li>Virtual memory is divided into <strong>pages</strong> (typically 4 KB each)</li>
+      <li>Physical memory is divided into <strong>frames</strong> (same size: 4 KB)</li>
+      <li>Any page can map to <em>any</em> frame</li>
+    </ul>
+
+    <p>
+      The mapping between pages and frames is stored in a <strong>page table</strong> &mdash;
+      a data structure maintained by the OS and read by the hardware (the <strong>MMU</strong>, the
+      Memory Management Unit) on every memory access.
+    </p>
+
+<pre><span class="cmt">// Hardware translation with paging:</span>
+page_number = address >> <span class="num">12</span>;           <span class="cmt">// top bits = page number</span>
+offset      = address & <span class="num">0xFFF</span>;         <span class="cmt">// bottom 12 bits = offset within page</span>
+
+frame = page_table[page_number];
+
+<span class="kw">if</span> (!frame.present)
+    <span class="fn">trap</span>(<span class="str">"page fault"</span>);              <span class="cmt">// page not in physical memory</span>
+
+<span class="kw">if</span> (!<span class="fn">check_permissions</span>(frame, access_type))
+    <span class="fn">trap</span>(<span class="str">"protection fault"</span>);
+
+physical = frame.number * <span class="num">4096</span> + offset;</pre>
+  </div>
+
+  <div class="wide">
+    <div class="sketch">
+      <svg viewBox="0 0 520 310" xmlns="http://www.w3.org/2000/svg">
+        <!-- Virtual pages column -->
+        <text x="85" y="18" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--pencil)" font-weight="600">Virtual Pages</text>
+
+        <g filter="url(#pencil)">
+          <path d="M 20,28 L 155,29 L 156,58 L 21,59 Z" fill="var(--sketch-blue)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 20,64 L 155,65 L 156,94 L 21,95 Z" fill="var(--sketch-blue)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 20,100 L 155,101 L 156,130 L 21,131 Z" fill="var(--sketch-green)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 20,136 L 155,137 L 156,166 L 21,167 Z" fill="var(--sketch-green)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 20,228 L 155,229 L 156,258 L 21,259 Z" fill="var(--sketch-red)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+        </g>
+
+        <text x="88" y="48" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--sketch-blue)">Page 0 (code)</text>
+        <text x="88" y="84" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--sketch-blue)">Page 1 (code)</text>
+        <text x="88" y="120" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--sketch-green)">Page 2 (data)</text>
+        <text x="88" y="156" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--sketch-green)">Page 3 (heap)</text>
+        <text x="88" y="200" text-anchor="middle" font-family="Caveat, cursive" font-size="22" fill="var(--pencil-faint)">...</text>
+        <text x="88" y="248" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--sketch-red)">Page 255 (stack)</text>
+
+        <!-- Physical frames column -->
+        <text x="420" y="18" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--pencil)" font-weight="600">Physical Frames</text>
+
+        <g filter="url(#pencil)">
+          <path d="M 350,28 L 498,29 L 499,58 L 351,59 Z" fill="var(--pencil)" fill-opacity="0.06" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 350,64 L 498,65 L 499,94 L 351,95 Z" fill="var(--sketch-green)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 350,100 L 498,101 L 499,130 L 351,131 Z" fill="var(--sketch-pink)" fill-opacity="0.1" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 350,136 L 498,137 L 499,166 L 351,167 Z" fill="var(--sketch-blue)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 350,172 L 498,173 L 499,202 L 351,203 Z" fill="var(--sketch-red)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 350,208 L 498,209 L 499,238 L 351,239 Z" fill="var(--sketch-green)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 350,244 L 498,245 L 499,274 L 351,275 Z" fill="var(--sketch-blue)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M 350,280 L 498,281 L 499,310 L 351,311 Z" fill="var(--sketch-pink)" fill-opacity="0.1" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+        </g>
+
+        <text x="425" y="48" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--pencil-light)">Frame 0 (OS)</text>
+        <text x="425" y="84" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--sketch-green)">Frame 1 &larr; Page 2</text>
+        <text x="425" y="120" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--sketch-pink)">Frame 2 (proc B)</text>
+        <text x="425" y="156" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--sketch-blue)">Frame 3 &larr; Page 0</text>
+        <text x="425" y="192" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--sketch-red)">Frame 4 &larr; Page 255</text>
+        <text x="425" y="228" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--sketch-green)">Frame 5 &larr; Page 3</text>
+        <text x="425" y="264" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--sketch-blue)">Frame 6 &larr; Page 1</text>
+        <text x="425" y="300" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--sketch-pink)">Frame 7 (proc B)</text>
+
+        <!-- Arrows connecting pages to frames -->
+        <g filter="url(#pencil)">
+          <!-- Page 0 -> Frame 3 -->
+          <path d="M 160,43 C 240,43 280,151 346,151" fill="none" stroke="var(--sketch-blue)" stroke-width="1.2" opacity="0.55" marker-end="url(#hand-arrow-b)"/>
+          <!-- Page 1 -> Frame 6 -->
+          <path d="M 160,79 C 240,79 280,259 346,259" fill="none" stroke="var(--sketch-blue)" stroke-width="1.2" opacity="0.55" marker-end="url(#hand-arrow-b)"/>
+          <!-- Page 2 -> Frame 1 -->
+          <path d="M 160,115 C 220,115 280,79 346,79" fill="none" stroke="var(--sketch-green)" stroke-width="1.2" opacity="0.55" marker-end="url(#hand-arrow-g)"/>
+          <!-- Page 3 -> Frame 5 -->
+          <path d="M 160,151 C 230,151 290,223 346,223" fill="none" stroke="var(--sketch-green)" stroke-width="1.2" opacity="0.55" marker-end="url(#hand-arrow-g)"/>
+          <!-- Page 255 -> Frame 4 -->
+          <path d="M 160,243 C 220,243 280,187 346,187" fill="none" stroke="var(--sketch-red)" stroke-width="1.2" opacity="0.55" marker-end="url(#hand-arrow-r)"/>
+        </g>
+
+        <defs>
+          <marker id="hand-arrow-b" viewBox="0 0 12 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="var(--sketch-blue)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </marker>
+          <marker id="hand-arrow-g" viewBox="0 0 12 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="var(--sketch-green)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </marker>
+          <marker id="hand-arrow-r" viewBox="0 0 12 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="var(--sketch-red)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </marker>
+        </defs>
+      </svg>
+      <div class="sketch-caption">Pages map to frames in any order &mdash; contiguous virtual, scattered physical</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <p>
+      This is the key insight: <strong>the program sees contiguous memory, but physical memory
+      can be completely scattered</strong>. Page 0 might be in frame 3. Page 1 might be in
+      frame 6. Page 255 might be in frame 4. It doesn't matter. The page table keeps track
+      of the mapping, and the hardware translates transparently.
+    </p>
+
+    <h3>Why This Kills Fragmentation</h3>
+    <p>
+      Because every page and every frame is the same size (4 KB), there's no such thing as
+      "this free region is too small." Any free frame can hold any page. If there are 10
+      free frames scattered across physical memory, you can use all 10 &mdash; they don't
+      need to be adjacent.
+    </p>
+
+    <p>
+      No external fragmentation. Gone. The only waste is <strong>internal fragmentation</strong>
+      within the last page of a segment (if a program uses 5000 bytes, it needs two 4 KB pages,
+      wasting ~3 KB). With 4 KB pages, the maximum waste per segment is 4095 bytes &mdash;
+      negligible when machines have gigabytes of RAM.
+    </p>
+
+    <h3>What the Page Table Entry Stores</h3>
+    <p>
+      Each entry in the page table isn't just a frame number. It also contains several important
+      bits:
+    </p>
+    <ul style="margin-bottom: 1.5rem; padding-left: 1.25rem;">
+      <li><strong>Present bit</strong> &mdash; is this page actually backed by physical RAM right now?</li>
+      <li><strong>Read/Write bit</strong> &mdash; can the program write to this page?</li>
+      <li><strong>User/Supervisor bit</strong> &mdash; can user-mode code access this?</li>
+      <li><strong>Dirty bit</strong> &mdash; has this page been written to?</li>
+      <li><strong>Accessed bit</strong> &mdash; has this page been read or written recently?</li>
+    </ul>
+
+    <p>
+      These bits give the OS fine-grained control over every single page of every process's
+      memory. And they enable two critical features that base-and-bound and segmentation
+      couldn't do well.
+    </p>
+
+    <h3>Demand Paging: Memory That Doesn't Exist Yet</h3>
+    <p>
+      The present bit enables a powerful trick. When a program asks for memory, the OS
+      can create a page table entry with the present bit <strong>cleared</strong>. No physical
+      RAM is allocated. The program's virtual address space grows, but no real resources
+      are consumed.
+    </p>
+    <p>
+      Only when the program actually <em>touches</em> that page does the hardware discover
+      the present bit is zero. It triggers a <strong>page fault</strong> &mdash; the CPU
+      traps to the OS, which allocates a physical frame, fills it with the right data (or
+      zeros), updates the page table entry, and lets the program continue. The program
+      never knows anything happened.
+    </p>
+
+    <div class="callout">
+      <p>
+        This is why a program can have gigabytes of virtual address space while using
+        only megabytes of physical RAM. The OS only allocates real memory for pages the
+        program actually uses.
+      </p>
+    </div>
+
+    <h3>Swapping: Using Disk as Overflow</h3>
+    <p>
+      What happens when physical RAM fills up? The OS picks a page that hasn't been used
+      recently, writes it to disk, clears its present bit, and frees the frame. If the
+      program accesses that page again, a page fault brings it back from disk.
+    </p>
+    <p>
+      This means programs can collectively use <em>more memory than physically exists</em>.
+      The OS juggles pages between RAM and disk, keeping the hot pages in RAM and the cold
+      pages on disk. From the program's perspective, nothing changes &mdash; it just gets
+      slower when its pages get evicted.
+    </p>
+
+    <div class="tradeoff">
+      <div class="tradeoff-col pros">
+        <h4>Pros</h4>
+        <ul>
+          <li><strong>No external fragmentation</strong> &mdash; any free frame fits any page</li>
+          <li>Demand paging &mdash; only allocate RAM for pages that are actually used</li>
+          <li>Swapping &mdash; use disk as overflow, run more programs than RAM allows</li>
+          <li>Fine-grained permissions per page</li>
+          <li>Easy code sharing &mdash; two processes can map the same frame</li>
+        </ul>
+      </div>
+      <div class="tradeoff-col cons">
+        <h4>Cons</h4>
+        <ul>
+          <li>Page tables themselves use memory (a full 48-bit address space needs a <em>lot</em> of entries)</li>
+          <li>Every memory access needs a page table lookup &mdash; solved by the TLB cache</li>
+          <li>Small internal fragmentation (up to one page per segment)</li>
+        </ul>
+      </div>
+    </div>
+
+    <p>
+      The cons are minor and well-solved. Multi-level page tables compress the table by only
+      allocating entries for the address ranges actually in use. The TLB (Translation Lookaside
+      Buffer) caches recent translations so most lookups take a single CPU cycle.
+    </p>
+
+    <p>
+      Paging is so effective that it's the memory management scheme used by every modern OS
+      &mdash; Linux, Windows, macOS, Android, iOS. It's the foundation of virtual memory as
+      we know it.
+    </p>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 7 — MODERN VIRTUAL MEMORY
+     ============================================================ -->
+<section class="" id="modern">
+  <div class="container">
+
+    <h2>Modern Virtual Memory</h2>
+
+
+    <p>
+      The virtual memory you're using right now is paging, plus several optimizations that
+      were added over the decades. Here's what a modern system (like x86-64 Linux) actually does:
+    </p>
+
+    <h3>Multi-Level Page Tables</h3>
+    <p>
+      A flat page table for a 48-bit address space would need 2<sup>36</sup> entries &mdash;
+      512 GB just for the table. Obviously unworkable. Instead, modern CPUs use a <strong>hierarchical
+      page table</strong>. On x86-64, it's four levels deep:
+    </p>
+  </div>
+
+  <div class="wide">
+    <div class="sketch">
+      <svg viewBox="0 0 520 120" xmlns="http://www.w3.org/2000/svg">
+        <text x="260" y="18" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--pencil)" font-weight="600">48-bit Virtual Address</text>
+
+        <g filter="url(#pencil)">
+          <!-- 5 boxes for the address fields -->
+          <path d="M 30,30 L 125,31 L 126,68 L 31,69 Z" fill="var(--sketch-purple)" fill-opacity="0.1" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M 128,30 L 223,31 L 224,68 L 129,69 Z" fill="var(--sketch-purple)" fill-opacity="0.1" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M 226,30 L 321,31 L 322,68 L 227,69 Z" fill="var(--sketch-purple)" fill-opacity="0.1" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M 324,30 L 419,31 L 420,68 L 325,69 Z" fill="var(--sketch-purple)" fill-opacity="0.1" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M 422,30 L 495,31 L 496,68 L 423,69 Z" fill="var(--sketch-orange)" fill-opacity="0.12" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round"/>
+        </g>
+
+        <text x="78" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-purple)" font-weight="600">PML4</text>
+        <text x="176" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-purple)" font-weight="600">PDPT</text>
+        <text x="274" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-purple)" font-weight="600">PD</text>
+        <text x="372" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-purple)" font-weight="600">PT</text>
+        <text x="459" y="53" text-anchor="middle" font-family="Caveat, cursive" font-size="16" fill="var(--sketch-orange)" font-weight="600">Offset</text>
+
+        <text x="78" y="86" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--pencil-light)">9 bits</text>
+        <text x="176" y="86" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--pencil-light)">9 bits</text>
+        <text x="274" y="86" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--pencil-light)">9 bits</text>
+        <text x="372" y="86" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--pencil-light)">9 bits</text>
+        <text x="459" y="86" text-anchor="middle" font-family="Caveat, cursive" font-size="13" fill="var(--pencil-light)">12 bits</text>
+
+        <text x="226" y="110" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-faint)">each level indexes into a table of 512 entries</text>
+        <text x="459" y="110" text-anchor="middle" font-family="Caveat, cursive" font-size="14" fill="var(--pencil-faint)">within page</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="container">
+    <p>
+      Each level is a table with 512 entries. The MMU walks the tree: PML4 entry points to
+      a PDPT, which points to a PD, which points to a PT, which gives the physical frame.
+      Four memory accesses to resolve one virtual address.
+    </p>
+    <p>
+      The genius of this structure: <strong>most entries don't exist</strong>. If a process
+      only uses a few regions of its address space, only the relevant branches of the tree
+      are allocated. A typical process might need a few hundred KB for its page tables, not
+      512 GB.
+    </p>
+
+    <h3>The TLB &mdash; Making It Fast</h3>
+    <p>
+      Four memory accesses per translation would be catastrophic for performance. The
+      <strong>TLB</strong> (Translation Lookaside Buffer) fixes this. It's a small,
+      extremely fast cache inside the CPU that stores recent virtual-to-physical mappings.
+    </p>
+    <p>
+      A TLB hit resolves the translation in ~1 CPU cycle. A TLB miss triggers the full
+      4-level page table walk. On modern workloads, the TLB hit rate is typically above
+      99%. The 1% of misses are expensive, but rare enough to be manageable.
+    </p>
+
+    <h3>Each Process Gets Its Own Page Table</h3>
+    <p>
+      When the OS switches from process A to process B, it loads B's page table root address
+      into the <code>CR3</code> register (on x86-64). The same virtual address
+      <code>0x400000</code> now maps to completely different physical memory. Process A can't
+      see B's pages. Process B can't see A's. <strong>Complete isolation.</strong>
+    </p>
+
+    <h3>Copy-on-Write</h3>
+    <p>
+      When a process calls <code>fork()</code>, the OS doesn't copy all its memory. Instead,
+      both parent and child share the same physical frames, with all pages marked
+      <strong>read-only</strong>. When either process tries to <em>write</em> to a shared
+      page, the hardware triggers a page fault. The OS then makes a private copy of just
+      that page. Pages that are never written are never copied.
+    </p>
+    <p>
+      This is why <code>fork()</code> is fast: it copies the page table, not the actual
+      memory. Most pages are never modified by the child, so they're never duplicated.
+    </p>
+
+    <h3>Memory-Mapped Files</h3>
+    <p>
+      The OS can map a file directly into a process's address space. Reading from those
+      virtual addresses reads from the file. The kernel uses the page fault mechanism to
+      load file contents into physical frames on demand. This is how shared libraries work:
+      <code>libc.so</code> is mapped into every process, but only one copy exists in
+      physical RAM.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 8 — SUMMARY
+     ============================================================ -->
+<section class="closing" id="summary">
+  <div class="container">
+
+    <h2>The Journey</h2>
+
+
+    <p>Let's look at how far we've come:</p>
+
+    <ol style="margin-bottom: 2rem; padding-left: 1.25rem; line-height: 2;">
+      <li><strong>Bare metal</strong> &mdash; one program, physical addresses, no protection</li>
+      <li><strong>Fixed partitions</strong> &mdash; multiple programs, but rigid and wasteful</li>
+      <li><strong>Base and bound</strong> &mdash; flexible sizes, but external fragmentation and no sharing</li>
+      <li><strong>Segmentation</strong> &mdash; logical regions, sharing possible, but fragmentation persists</li>
+      <li><strong>Paging</strong> &mdash; fixed-size pages eliminate fragmentation, enable demand paging and swapping</li>
+      <li><strong>Modern VM</strong> &mdash; multi-level page tables, TLB, copy-on-write, memory-mapped files</li>
+    </ol>
+
+    <p>
+      Each step solved a real problem but introduced new ones. The pattern is the same
+      pattern you see everywhere in systems design: <strong>add a layer of indirection</strong>.
+      Physical addresses were too rigid, so we added virtual addresses. A single mapping
+      was too coarse, so we added per-segment mappings. Variable-sized segments caused
+      fragmentation, so we switched to fixed-size pages.
+    </p>
+
+    <p>
+      The result is the virtual memory system running on your machine right now: an elaborate
+      illusion that gives every process a private, contiguous, 256 TiB address space &mdash;
+      all backed by maybe 8 or 16 GB of physical RAM, managed transparently by the hardware
+      and kernel.
+    </p>
+
+    <div class="next-post">
+      <p>
+        <strong>Next up:</strong> I'm writing about the memory layout of a running process
+        &mdash; text, data, heap, stack, page faults, and how it all fits together.
+        <em>Coming soon.</em>
+      </p>
+    </div>
+
+    <h3>Resources</h3>
+    <ul>
+      <li><a href="https://pages.cs.wisc.edu/~remzi/OSTEP/">Operating Systems: Three Easy Pieces</a> &mdash; Chapters 13&ndash;23 (free)</li>
+    </ul>
+  </div>
+</section>
+
+<div style="height: 4rem;"></div>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+
+<script src="../theme.js"></script>
+<script data-goatcounter="https://mohamed25.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
