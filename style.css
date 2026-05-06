@@ -198,3 +198,52 @@ a.blog-item .title,
   font-size: 0.82rem;
   font-style: normal;
 }
+
+/* LABELS */
+.post-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: var(--border-strong);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  font-style: normal;
+  letter-spacing: 0.02em;
+}
+
+/* FILTER BAR */
+.label-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+}
+
+.filter-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.filter-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.filter-btn.active {
+  color: var(--bg);
+  background: var(--heading);
+  border-color: var(--heading);
+}

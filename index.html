@@ -35,15 +35,22 @@
 <section class="blog">
   <div class="container">
     <h2>Blog</h2>
-    <div class="blog-item">
+
+    <div class="label-filter" id="label-filter">
+      <button class="filter-btn active" data-filter="all">all</button>
+    </div>
+
+    <div class="blog-item" data-labels="databases postgres">
       <a class="title" href="blog/postgres-default-values.html">Adding Columns to Big Tables in PostgreSQL</a>
       <span class="date">May 6, 2026</span>
     </div>
-    <div class="blog-item">
+
+    <div class="blog-item" data-labels="operating-systems">
       <a class="title" href="blog/virtual-memory.html">How Does Virtual Memory Work?</a>
       <span class="date">Feb 25, 2026</span>
     </div>
-    <div class="blog-item">
+
+    <div class="blog-item" data-labels="operating-systems">
       <span class="title">How Your Program Uses Memory</span>
       <span class="date status">coming soon</span>
     </div>
@@ -51,6 +58,43 @@
 </section>
 
 <script src="theme.js"></script>
+<script>
+(function () {
+  const items = Array.from(document.querySelectorAll('.blog-item[data-labels]'));
+  const allLabels = [...new Set(items.flatMap(el => el.dataset.labels.split(' ')))].sort();
+  const bar = document.getElementById('label-filter');
+
+  allLabels.forEach(label => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn';
+    btn.dataset.filter = label;
+    btn.textContent = label;
+    btn.onclick = () => setFilter(label);
+    bar.appendChild(btn);
+  });
+
+  bar.querySelector('[data-filter="all"]').onclick = () => setFilter('all');
+
+  function setFilter(active) {
+    bar.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.filter === active);
+    });
+    document.querySelectorAll('.blog-item').forEach(item => {
+      if (active === 'all') {
+        item.style.display = '';
+      } else if (!item.dataset.labels) {
+        item.style.display = 'none';
+      } else {
+        item.style.display = item.dataset.labels.split(' ').includes(active) ? '' : 'none';
+      }
+    });
+    history.replaceState(null, '', active === 'all' ? location.pathname : '#' + active);
+  }
+
+  const hash = location.hash.slice(1);
+  if (hash && allLabels.includes(hash)) setFilter(hash);
+})();
+</script>
 <script data-goatcounter="https://mohamed25.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>
