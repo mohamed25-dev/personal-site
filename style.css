@@ -1,3 +1,45 @@
+:root {
+  --bg: #fafaf9;
+  --text: #18181b;
+  --text-muted: #71717a;
+  --heading: #09090b;
+  --accent: #18181b;
+  --border: #f4f4f5;
+  --border-strong: #e4e4e7;
+  --nav-bg: rgba(250, 250, 249, 0.85);
+}
+
+[data-theme="dark"] {
+  --bg: #18181b;
+  --text: #fafaf9;
+  --text-muted: #a1a1aa;
+  --heading: #ffffff;
+  --accent: #e4e4e7;
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --nav-bg: rgba(24, 24, 27, 0.85);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #18181b;
+    --text: #fafaf9;
+    --text-muted: #a1a1aa;
+    --heading: #ffffff;
+    --accent: #e4e4e7;
+    --border: #27272a;
+    --border-strong: #3f3f46;
+    --nav-bg: rgba(24, 24, 27, 0.85);
+  }
+}
+
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease !important;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
@@ -6,9 +48,9 @@ html {
 }
 
 body {
-  font-family: 'Inter', -apple-system, sans-serif;
-  color: #1c1917;
-  background: #fafaf9;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: var(--text);
+  background: var(--bg);
   line-height: 1.75;
 }
 
@@ -18,27 +60,65 @@ body {
   padding: 0 1.5rem;
 }
 
-/* INTRO */
-.intro {
-  min-height: 60vh;
+/* NAV */
+.site-nav {
+  position: sticky;
+  top: 0;
+  background: var(--nav-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+}
+
+.site-nav .nav-inner {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 0.85rem 1.5rem;
   display: flex;
   align-items: center;
-  padding: 4rem 0;
+  justify-content: space-between;
+}
+
+.theme-toggle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.theme-toggle:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* INTRO */
+.intro {
+  display: flex;
+  align-items: center;
+  padding: 3rem 0 2rem;
 }
 
 h1 {
   font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(2rem, 5vw, 3rem);
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
   font-weight: 800;
-  color: #0c0a09;
+  color: var(--heading);
   line-height: 1.2;
   letter-spacing: -0.02em;
+  white-space: nowrap;
   margin-bottom: 1rem;
 }
 
 .intro p {
-  color: #78716c;
-  font-size: 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.92rem;
   line-height: 1.7;
   margin-bottom: 1.25rem;
 }
@@ -49,9 +129,9 @@ h1 {
 }
 
 .links a {
-  color: #6366f1;
+  color: var(--accent);
   text-decoration: none;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 500;
 }
 
@@ -60,7 +140,7 @@ h1 {
 /* DIVIDER */
 hr {
   border: none;
-  border-top: 1px solid #e7e5e4;
+  border-top: 1px solid var(--border);
   margin: 0;
 }
 
@@ -73,24 +153,48 @@ hr {
   font-family: 'Fraunces', Georgia, serif;
   font-size: 1.5rem;
   font-weight: 700;
-  color: #0c0a09;
+  color: var(--heading);
   line-height: 1.2;
   letter-spacing: -0.02em;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .blog-item {
-  padding: 0.25rem 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.blog-item:last-child {
+  border-bottom: none;
 }
 
 .blog-item .title {
-  color: #1c1917;
-  font-size: 1rem;
+  color: var(--text);
+  font-size: 0.92rem;
   font-weight: 500;
   font-style: italic;
+  text-decoration: none;
+}
+
+a.blog-item .title,
+.blog-item a.title {
+  color: var(--text);
+}
+
+.blog-item a.title:hover {
+  color: var(--accent);
+}
+
+.blog-item .date {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
 }
 
 .blog-item .status {
-  color: #78716c;
-  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-style: normal;
 }

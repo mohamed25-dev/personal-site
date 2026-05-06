@@ -6,13 +6,18 @@
 <title>Mohamed Mirghani</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script>(function(){var t=localStorage.getItem('theme-preference');if(!t)t=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t)})()</script>
 </head>
 <body>
 
-<button class="theme-toggle" aria-label="Toggle dark mode">// dark</button>
+<nav class="site-nav">
+  <div class="nav-inner">
+    <span></span>
+    <button class="theme-toggle" aria-label="Toggle dark mode">// dark</button>
+  </div>
+</nav>
 
 <section class="intro">
   <div class="container">
@@ -31,11 +36,16 @@
   <div class="container">
     <h2>Blog</h2>
     <div class="blog-item">
+      <a class="title" href="blog/postgres-default-values.html">Adding Columns to Big Tables in PostgreSQL</a>
+      <span class="date">May 6, 2026</span>
+    </div>
+    <div class="blog-item">
       <a class="title" href="blog/virtual-memory.html">How Does Virtual Memory Work?</a>
+      <span class="date">Feb 25, 2026</span>
     </div>
     <div class="blog-item">
       <span class="title">How Your Program Uses Memory</span>
-      <span class="status">&mdash; coming soon</span>
+      <span class="date status">coming soon</span>
     </div>
   </div>
 </section>

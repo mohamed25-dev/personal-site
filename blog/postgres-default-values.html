@@ -1,38 +1,389 @@
-I was working on a task that required adding a new column to an existing big table, as you know when doing such a type of migration we try to avoid blocking the table, specifically for hot tables.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adding Columns to Big Tables in PostgreSQL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>(function(){var t=localStorage.getItem('theme-preference');if(!t)t=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t)})()</script>
+<link rel="stylesheet" href="blog.css">
+</head>
+<body>
 
-The column was a simple boolean flag, so the easiest solution is to make it nullable and in that case it will be a very quick operation since postgres update the table metadata only and it will not do any table rewrite during the migration. The issue is using a boolean instead of a pointer to a boolean would fail during the scan, if the column is null.
+<nav class="site-nav">
+  <div class="nav-inner">
+    <a href="../index.html#blog" class="back-link">&larr; Back to blog</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode">// dark</button>
+  </div>
+</nav>
 
-And we have two options:
-To use the boolean pointer { active: *bool } 
-To use the nullable bool provided by the database package 
+<!-- shared pencil SVG filter -->
+<svg width="0" height="0" style="position:absolute;">
+  <defs>
+    <filter id="pencil" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="turbulence" baseFrequency="0.025" numOctaves="3" seed="2" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.8" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
 
- I won’t go into details of golang, our main focus is postgres
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section class="hero">
+  <div class="container">
+    <h1>Adding Columns to Big Tables in PostgreSQL</h1>
+  </div>
+</section>
 
-But I did not like both, because that means I had to add some extra checks, but at the same time I don’t want to use false as a default value to lock the table.
+<!-- ============================================================
+     SECTION 1 — THE PROBLEM
+     ============================================================ -->
+<section id="the-problem">
+  <div class="container">
 
-I decided to do some experiments to see the difference in time between using null and false as a default value. I tried on tables with 60 million records and the results were weird, the numbers were very close (around 300 ms for both, the null was a few ms faster).
+    <h2>The Problem</h2>
 
-I did a small research to understand the reasons, because my expectations were to see a very big difference due to the full table rewrite when using non-null value as a default, and here comes the surprise. 
+    <p>
+      I needed to add a boolean column to a relatively large table. The standard advice is simple:
+      avoid anything that locks the table. A naive <code>ALTER TABLE</code> with a default value
+      on a big table does exactly that.
+    </p>
 
-Postgres (starting from version 11)  handles both migrations in a similar way without table rewrite which requires the table to be locked, and for big tables the rewrite is very expensive and will take long time. The way plstgres solved this is by adding two new columns to the catalog ( it is a system database where postgres store metadata about your database). The new columns are atthasmissing and attmisingval, added to pg_attribute table which stores information about every column in your database like the position, datatype, whether it uses default value or not and so on.
+    <p>
+      The column was a simple boolean flag. My first instinct was to make it nullable. A nullable
+      column is just a metadata change &mdash; no rewrite, just a brief <a href="https://www.postgresql.org/docs/current/explicit-locking.html">ACCESS EXCLUSIVE</a> lock, done in milliseconds.
+      But nullable means three possible states: <code>true</code>, <code>false</code>, and
+      <code>null</code>. In Go, a plain <code>bool</code> will fail on a null scan. You have to
+      use either a pointer (<code>*bool</code>) with nil checks, or a wrapper like
+      <code>sql.NullBool</code>. Neither is clean.
+    </p>
 
-The idea is simple, postgres scans this table before sacanning the targetted table, if a column has atthasmissing (which means: ) , that means this column is not stored physically. Then it checks attmissingval which stores the default value for the column (true or false for a boolean column). And based on that it fills the data.
+    <p>
+      But I also didn't want to use <code>NOT NULL DEFAULT false</code> and lock the table. So I ran an experiment. The results were not what I expected.
+    </p>
 
-If later the database had to do a rewrite for any reason, like adding a new colum with non-volatile value, it will update the other columns as well and it will unset attmiisngval and atthasmissing.
-
-Another important thing is, if you updated one of the rows that had default values, postgres has a mechanism to identify such row and it will return the physically stored value instead of the one stored in attmissingval.
-
-Lets see this in real.
-
-First lets create a simple users table with (id auto incremented number, name (not null)). 
-Lets generate 10 millions records.
-Lets add a nullable phone number
-Lets add is_active with true default value.
-Did you notice both were very close , lets see the pg_attriubte for theis table, notive how postgres added the default value to attmissingvalue. 
-
-Now lets use a volatile value that forces postgres to do the full table rewrite, a simple random function is enough to do that. 
-
-Did you notice the difference, it is very huge. If we check the pg_attribute again, we will notice that our two columns were unset and the postgres took the chance to write is_active and phone number to the physical storage.
+  </div>
+</section>
 
 
+<!-- ============================================================
+     SECTION 2 — THE EXPERIMENT
+     ============================================================ -->
+<section id="the-experiment">
+  <div class="container">
 
+    <h2>The Experiment</h2>
+
+    <p>
+      I tested both approaches on a table with 60 million records. Here's roughly what I ran:
+    </p>
+
+<pre><span class="cmt">-- nullable column (expected: fast, metadata-only)</span>
+<span class="kw">ALTER TABLE</span> users <span class="kw">ADD COLUMN</span> phone <span class="kw">TEXT</span>;
+
+<span class="cmt">-- non-null column with a default (expected: slow, full table rewrite)</span>
+<span class="kw">ALTER TABLE</span> users <span class="kw">ADD COLUMN</span> is_active <span class="kw">BOOLEAN NOT NULL DEFAULT</span> <span class="fn">true</span>;</pre>
+
+    <p>
+      Both finished in milliseconds, very close to each other.
+    </p>
+
+    <p>
+      I expected a full rewrite on 60 million rows to take a long time.
+      Clearly something was off.
+    </p>
+
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 3 — HOW POSTGRES HANDLES IT
+     ============================================================ -->
+<section id="how-postgres-handles-it">
+  <div class="container">
+
+    <h2>What PostgreSQL Actually Does</h2>
+
+    <p>
+      Since <strong>PostgreSQL 11</strong>, adding a non-null column with a stable default no
+      longer requires a table rewrite. Both cases &mdash; nullable and NOT NULL with a default
+      &mdash; are handled the same way: a fast metadata update.
+    </p>
+
+    <p>
+      The trick is in <code>pg_attribute</code>, a system table that stores information about
+      every column. PostgreSQL 11 added two new fields to it:
+    </p>
+
+    <ul>
+      <li><code>atthasmissing</code> &mdash; marks that this column was added after some rows
+        already exist</li>
+      <li><code>attmissingval</code> &mdash; the default value to use for those old rows</li>
+    </ul>
+
+    <p>
+      When you run <code>ALTER TABLE ... ADD COLUMN ... NOT NULL DEFAULT true</code>, PostgreSQL
+      doesn't touch any existing rows. It just writes <code>atthasmissing = true</code> and
+      <code>attmissingval = {true}</code> into <code>pg_attribute</code>. Done.
+    </p>
+
+  </div>
+
+  <div class="wide">
+    <div class="sketch">
+      <svg viewBox="0 0 580 220" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr" viewBox="0 0 12 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </marker>
+        </defs>
+
+        <!-- Title -->
+        <text x="290" y="18" text-anchor="middle" font-family="Caveat, cursive" font-size="17" fill="var(--pencil)" font-weight="600">pg_attribute (simplified)</text>
+
+        <!-- Table header -->
+        <g filter="url(#pencil)">
+          <path d="M 20,28 L 559,29 L 560,58 L 21,59 Z" fill="var(--pencil)" fill-opacity="0.07" stroke="var(--pencil)" stroke-width="1.5" stroke-linejoin="round"/>
+          <!-- vertical dividers in header -->
+          <line x1="155" y1="28" x2="155" y2="59" stroke="var(--pencil)" stroke-width="1" opacity="0.4"/>
+          <line x1="330" y1="28" x2="330" y2="59" stroke="var(--pencil)" stroke-width="1" opacity="0.4"/>
+          <line x1="450" y1="28" x2="450" y2="59" stroke="var(--pencil)" stroke-width="1" opacity="0.4"/>
+        </g>
+        <text x="88"  y="48" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil)" font-weight="700">attname</text>
+        <text x="243" y="48" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil)" font-weight="700">attnotnull</text>
+        <text x="390" y="48" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil)" font-weight="700">atthasmissing</text>
+        <text x="505" y="48" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil)" font-weight="700">attmissingval</text>
+
+        <!-- Row: id -->
+        <g filter="url(#pencil)">
+          <path d="M 20,59 L 559,60 L 560,90 L 21,91 Z" fill="none" stroke="var(--pencil)" stroke-width="1" stroke-linejoin="round" opacity="0.4"/>
+          <line x1="155" y1="59" x2="155" y2="91" stroke="var(--pencil)" stroke-width="1" opacity="0.3"/>
+          <line x1="330" y1="59" x2="330" y2="91" stroke="var(--pencil)" stroke-width="1" opacity="0.3"/>
+          <line x1="450" y1="59" x2="450" y2="91" stroke="var(--pencil)" stroke-width="1" opacity="0.3"/>
+        </g>
+        <text x="88"  y="79" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">id</text>
+        <text x="243" y="79" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">true</text>
+        <text x="390" y="79" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">false</text>
+        <text x="505" y="79" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">&mdash;</text>
+
+        <!-- Row: phone -->
+        <g filter="url(#pencil)">
+          <path d="M 20,91 L 559,92 L 560,122 L 21,123 Z" fill="none" stroke="var(--pencil)" stroke-width="1" stroke-linejoin="round" opacity="0.4"/>
+          <line x1="155" y1="91" x2="155" y2="123" stroke="var(--pencil)" stroke-width="1" opacity="0.3"/>
+          <line x1="330" y1="91" x2="330" y2="123" stroke="var(--pencil)" stroke-width="1" opacity="0.3"/>
+          <line x1="450" y1="91" x2="450" y2="123" stroke="var(--pencil)" stroke-width="1" opacity="0.3"/>
+        </g>
+        <text x="88"  y="111" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-blue)">phone</text>
+        <text x="243" y="111" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">false</text>
+        <text x="390" y="111" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">false</text>
+        <text x="505" y="111" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--pencil-light)">&mdash;</text>
+
+        <!-- Row: is_active (highlighted) -->
+        <g filter="url(#pencil)">
+          <path d="M 20,123 L 559,124 L 560,154 L 21,155 Z" fill="var(--sketch-green)" fill-opacity="0.1" stroke="var(--pencil)" stroke-width="1.3" stroke-linejoin="round"/>
+          <line x1="155" y1="123" x2="155" y2="155" stroke="var(--pencil)" stroke-width="1" opacity="0.3"/>
+          <line x1="330" y1="123" x2="330" y2="155" stroke="var(--pencil)" stroke-width="1" opacity="0.3"/>
+          <line x1="450" y1="123" x2="450" y2="155" stroke="var(--pencil)" stroke-width="1" opacity="0.3"/>
+        </g>
+        <text x="88"  y="143" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-green)" font-weight="600">is_active</text>
+        <text x="243" y="143" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-green)" font-weight="600">true</text>
+        <text x="390" y="143" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-green)" font-weight="600">true</text>
+        <text x="505" y="143" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-green)" font-weight="600">{true}</text>
+
+        <!-- annotation arrow -->
+        <text x="390" y="185" text-anchor="middle" font-family="Caveat, cursive" font-size="15" fill="var(--sketch-green)">existing rows don't exist physically &rarr; use this value</text>
+        <g filter="url(#pencil)">
+          <line x1="390" y1="156" x2="390" y2="172" stroke="var(--sketch-green)" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7"/>
+          <line x1="505" y1="156" x2="505" y2="172" stroke="var(--sketch-green)" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7"/>
+        </g>
+      </svg>
+      <div class="sketch-caption">is_active was added after existing rows &mdash; atthasmissing tells Postgres to fill from attmissingval</div>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <p>
+      When PostgreSQL reads a row that was written before <code>is_active</code> existed, it checks
+      <code>pg_attribute</code>. It sees <code>atthasmissing = true</code>, reads the default from
+      <code>attmissingval</code>, and returns it. The old rows are never touched.
+    </p>
+
+    <p>
+      If a row is updated later, PostgreSQL writes the real value into it at that point. From then
+      on, it no longer needs <code>attmissingval</code> for that row.
+    </p>
+
+    <div class="callout">
+      <p>
+        No existing rows are rewritten. Whether you add a nullable column or
+        <code>NOT NULL DEFAULT &lt;stable value&gt;</code>, the cost is the same.
+      </p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 4 — SEE IT YOURSELF
+     ============================================================ -->
+<section id="see-it-yourself">
+  <div class="container">
+
+    <h2>See It Yourself</h2>
+
+    <p>
+      Let's walk through this on a real table. Create a simple <code>users</code> table and fill it
+      with 60 million rows:
+    </p>
+
+<pre><span class="kw">CREATE TABLE</span> users (
+    id    <span class="kw">BIGSERIAL PRIMARY KEY</span>,
+    name  <span class="kw">TEXT NOT NULL</span>
+);
+
+<span class="kw">INSERT INTO</span> users (name)
+<span class="kw">SELECT</span> <span class="str">'user_'</span> || i
+<span class="kw">FROM</span> generate_series(<span class="num">1</span>, <span class="num">60000000</span>) i;</pre>
+
+    <p>Now add both columns and time them:</p>
+
+<pre>\<span class="fn">timing</span> on
+
+<span class="cmt">-- nullable column</span>
+<span class="kw">ALTER TABLE</span> users <span class="kw">ADD COLUMN</span> phone <span class="kw">TEXT</span>;
+<span class="cmt">-- Time: 29.901 ms</span>
+
+<span class="cmt">-- non-null with a stable default</span>
+<span class="kw">ALTER TABLE</span> users <span class="kw">ADD COLUMN</span> is_active <span class="kw">BOOLEAN NOT NULL DEFAULT</span> <span class="fn">true</span>;
+<span class="cmt">-- Time: 6.901 ms</span></pre>
+
+    <p>Check what PostgreSQL stored:</p>
+
+<pre><span class="kw">SELECT</span> attname, atthasmissing, attmissingval
+<span class="kw">FROM</span>   pg_attribute
+<span class="kw">WHERE</span>  attrelid = <span class="str">'users'</span>::<span class="fn">regclass</span>
+  <span class="kw">AND</span>  attnum > <span class="num">0</span>
+  <span class="kw">AND</span>  <span class="kw">NOT</span> attisdropped;</pre>
+
+<pre><span class="cmt">  attname  | atthasmissing | attmissingval
+-----------+---------------+---------------
+ id        | f             |
+ name      | f             |
+ phone     | f             |
+ is_active | t             | {t}</span></pre>
+
+    <p>
+      <code>is_active</code> has <code>atthasmissing = true</code> and
+      <code>attmissingval = {t}</code>. No rows were touched.
+    </p>
+
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 5 — THE EXCEPTION
+     ============================================================ -->
+<section id="the-exception">
+  <div class="container">
+
+    <h2>The Exception: Volatile Defaults</h2>
+
+    <p>
+      This only works when PostgreSQL can store a single fixed value. If the default is a
+      <strong>volatile function</strong> &mdash; one that returns a different value every call
+      &mdash; there's no single value to store. PostgreSQL falls back to a full table rewrite:
+    </p>
+
+<pre><span class="cmt">-- this forces a full rewrite on every existing row</span>
+<span class="kw">ALTER TABLE</span> users <span class="kw">ADD COLUMN</span> score <span class="kw">FLOAT NOT NULL DEFAULT</span> <span class="fn">random</span>();
+<span class="cmt">-- Time: 39453.727 ms  (~39 seconds)</span></pre>
+
+    <p>
+      Common volatile functions: <code>random()</code>,
+      <code>clock_timestamp()</code>, <code>gen_random_uuid()</code>.
+    </p>
+
+    <p>
+      After the rewrite, check <code>pg_attribute</code> again. The <code>atthasmissing</code>
+      flag on <code>is_active</code> is now cleared &mdash; PostgreSQL wrote the real values
+      physically while it was already rewriting the table.
+    </p>
+
+<pre><span class="kw">SELECT</span> attname, atthasmissing, attmissingval
+<span class="kw">FROM</span>   pg_attribute
+<span class="kw">WHERE</span>  attrelid = <span class="str">'users'</span>::<span class="fn">regclass</span>
+  <span class="kw">AND</span>  attnum > <span class="num">0</span>
+  <span class="kw">AND</span>  <span class="kw">NOT</span> attisdropped;</pre>
+
+<pre><span class="cmt">  attname  | atthasmissing | attmissingval
+-----------+---------------+---------------
+ id        | f             |
+ name      | f             |
+ phone     | f             |
+ is_active | f             |             <span class="cmt">&larr; cleared, now physically stored</span>
+ score     | f             |             <span class="cmt">&larr; volatile, was never set</span></span></pre>
+
+    <div class="callout bad">
+      <p>
+        If you need a UUID or a timestamp per row, don't use <code>DEFAULT gen_random_uuid()</code>
+        or <code>DEFAULT now()</code> on a big table. Add the column as nullable first, backfill
+        in batches, then set the constraint.
+      </p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ============================================================
+     SECTION 6 — SUMMARY
+     ============================================================ -->
+<section class="closing" id="summary">
+  <div class="container">
+
+    <h2>The Takeaway</h2>
+
+    <p>
+      Before PostgreSQL 11, the advice was simple: always add columns as nullable on big tables.
+      <code>NOT NULL DEFAULT x</code> would trigger a full rewrite. That's no longer true for
+      stable defaults.
+    </p>
+
+    <p>The rules today:</p>
+
+    <ul>
+      <li><strong>Nullable column</strong> &mdash; fast, always</li>
+      <li><strong>NOT NULL with a stable default</strong> (a literal, or a non-volatile function) &mdash; fast in PostgreSQL 11+, same cost as nullable</li>
+      <li><strong>NOT NULL with a volatile default</strong> (<code>random()</code>, <code>now()</code>, <code>gen_random_uuid()</code>&hellip;) &mdash; full table rewrite, can take a long time on big tables</li>
+    </ul>
+
+    <p>
+      PostgreSQL stores the missing value in <code>pg_attribute</code> and fills it in at read
+      time for old rows. No rewrite, just a brief <a href="https://www.postgresql.org/docs/current/explicit-locking.html">ACCESS EXCLUSIVE</a> lock.
+    </p>
+
+    <p>
+      In the end I went with <code>NOT NULL DEFAULT false</code>. Clean type, no nil checks, just
+      a brief <a href="https://www.postgresql.org/docs/current/explicit-locking.html">ACCESS EXCLUSIVE</a> lock.
+      Sometimes the thing you were worried about isn't a problem anymore.
+    </p>
+
+  </div>
+</section>
+
+<div style="height: 4rem;"></div>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script src="../theme.js"></script>
+<script data-goatcounter="https://mohamed25.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
