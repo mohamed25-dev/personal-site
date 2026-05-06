@@ -1,0 +1,38 @@
+I was working on a task that required adding a new column to an existing big table, as you know when doing such a type of migration we try to avoid blocking the table, specifically for hot tables.
+
+The column was a simple boolean flag, so the easiest solution is to make it nullable and in that case it will be a very quick operation since postgres update the table metadata only and it will not do any table rewrite during the migration. The issue is using a boolean instead of a pointer to a boolean would fail during the scan, if the column is null.
+
+And we have two options:
+To use the boolean pointer { active: *bool } 
+To use the nullable bool provided by the database package 
+
+ I won’t go into details of golang, our main focus is postgres
+
+But I did not like both, because that means I had to add some extra checks, but at the same time I don’t want to use false as a default value to lock the table.
+
+I decided to do some experiments to see the difference in time between using null and false as a default value. I tried on tables with 60 million records and the results were weird, the numbers were very close (around 300 ms for both, the null was a few ms faster).
+
+I did a small research to understand the reasons, because my expectations were to see a very big difference due to the full table rewrite when using non-null value as a default, and here comes the surprise. 
+
+Postgres (starting from version 11)  handles both migrations in a similar way without table rewrite which requires the table to be locked, and for big tables the rewrite is very expensive and will take long time. The way plstgres solved this is by adding two new columns to the catalog ( it is a system database where postgres store metadata about your database). The new columns are atthasmissing and attmisingval, added to pg_attribute table which stores information about every column in your database like the position, datatype, whether it uses default value or not and so on.
+
+The idea is simple, postgres scans this table before sacanning the targetted table, if a column has atthasmissing (which means: ) , that means this column is not stored physically. Then it checks attmissingval which stores the default value for the column (true or false for a boolean column). And based on that it fills the data.
+
+If later the database had to do a rewrite for any reason, like adding a new colum with non-volatile value, it will update the other columns as well and it will unset attmiisngval and atthasmissing.
+
+Another important thing is, if you updated one of the rows that had default values, postgres has a mechanism to identify such row and it will return the physically stored value instead of the one stored in attmissingval.
+
+Lets see this in real.
+
+First lets create a simple users table with (id auto incremented number, name (not null)). 
+Lets generate 10 millions records.
+Lets add a nullable phone number
+Lets add is_active with true default value.
+Did you notice both were very close , lets see the pg_attriubte for theis table, notive how postgres added the default value to attmissingvalue. 
+
+Now lets use a volatile value that forces postgres to do the full table rewrite, a simple random function is enough to do that. 
+
+Did you notice the difference, it is very huge. If we check the pg_attribute again, we will notice that our two columns were unset and the postgres took the chance to write is_active and phone number to the physical storage.
+
+
+
